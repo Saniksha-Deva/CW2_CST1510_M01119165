@@ -1,0 +1,3 @@
+Saniksha,$2b$12$iFrS3HGo3A7bWQK2e4BLRuKVnVpBuXbRO5WRy7UGLaZpd4MD/vZZC
+Bob,$2b$12$1x/zZljnsApZ5IVghVZOueJkvX4Azf/W0v5kHldybdfZZbGAmB4QW
+Alice,$2b$12$aYPTbjn7spjv/MuZxfBnqO73rFxmwBek9h67dtEVSkGmEmWkc/xG.
