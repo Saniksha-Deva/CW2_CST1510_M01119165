@@ -49,3 +49,10 @@ def delete_user(conn, user_name):
     cur.execute(sql, param)
     conn.commit()
 
+# Adding admin role
+def update_user_role(conn, username, new_role):
+    cur = conn.cursor()
+    sql = 'UPDATE users SET role = ? WHERE username = ?'
+    param = (new_role, username)
+    cur.execute(sql, param)
+    conn.commit()

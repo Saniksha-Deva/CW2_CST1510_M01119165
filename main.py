@@ -1,10 +1,11 @@
 import sqlite3
 import pandas as pd
 
-from app_model.db import conn
-from app_model.users import add_user, get_user
+from app_model.db import get_connection
+from app_model.users import add_user, get_user, update_user_role
 from hashing import generate_hash, is_valid_hash
 
+conn = get_connection()
 
 # User registration
 def register_user(conn):
@@ -36,6 +37,8 @@ def main():
         elif choice == '3':
             print('Goodbye!'); break
 
+# Update user to admin
+#update_user_role(conn, 'Admin', 'admin')
 
 if __name__ =='__main__':
     main()
