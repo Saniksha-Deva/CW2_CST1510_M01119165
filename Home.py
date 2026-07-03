@@ -280,6 +280,35 @@ def it_tickets_dashboard():
     ticket_counts = ticket_counts.sort_values('created_at')
     st.line_chart(ticket_counts, x='created_at', y='Ticket Count', x_label='Month', y_label="Number of Tickets")
     
+# ---------- Admin Dashboard and Features ----------
+    
+def admin_dashboard():
+    st.set_page_config(
+        page_title="Admin Dashboard",
+        layout="wide"
+    )
+
+    current_user = st.session_state.get('username')
+
+    if not current_user:
+        st.error("Please log in first.")
+        st.stop()
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT role FROM users WHERE username = ?", (current_user,))
+    result = cursor.fetchone()
+    conn.close()
+
+    user_role = result[0] if result else None
+
+    if user_role != 'admin':
+        st.warning("This page can only be accessed by admins.")
+        st.stop()
+
+    st.title("Welcome to the Admin Dashboard")
+
 # ---------- Configure Pages for navigation ----------
 
 home = st.Page(home_page, title="Home", icon="🏠")
@@ -289,6 +318,7 @@ dashboard = st.Page("pages/1_Dashboard.py", title="Dashboard")
 cyber = st.Page(cyber_incidents_dashboard, title="Cyber Incidents Dashboard")
 datasets = st.Page(datasets_dashboard, title="Datasets Metadata Dashboard")
 it_dashboard = st.Page(it_tickets_dashboard, title="IT Tickets Dashboard")
+admin = st.Page(admin_dashboard, title="Admin Dashboard")
 
 st.session_state.home = home
 st.session_state.login = login
@@ -301,10 +331,11 @@ if 'logged_in' not in st.session_state:
 
 # ---------- Page Navigation ----------
 
-pages = [home, login, register, dashboard, cyber, datasets, it_dashboard]
+pages = [home, login, register, dashboard, cyber, datasets, it_dashboard, admin]
 if st.session_state.logged_in:
     # Pages that can be accessed after a user is logged in
-    pages = [dashboard, cyber, datasets, it_dashboard]
+    pages = [dashboard, cyber, datasets, it_dashboard, admin]
+
     with st.sidebar:
         if st.button("Log out"):
             for key in ['logged_in', 'username']:
