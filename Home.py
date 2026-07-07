@@ -89,12 +89,30 @@ def register_page():
     with st.form("register_form"):
         register_username = st.text_input("New Username")
         register_password = st.text_input("New Password", type="password")
+        confirm_password = st.text_input("Confirm Password", type="password")
         hash_password = generate_hash(register_password)
         submitted = st.form_submit_button("Register")
 
         if submitted:
+            # Validate imputs
             if not register_username or not register_password:
                 st.error("All fields are required.")
+                return
+            
+            if register_password != confirm_password:
+                st.error("Passwords do not match.")
+                return
+            
+            if len(register_password) < 8:
+                st.error("Passwords must be at least 8 characters.")
+                return
+            
+            if len(register_password) > 12:
+                st.error("Password cannot be more than 12 characters.")
+                return
+            
+            if " " in register_password:
+                st.error("Password cannot have blank spaces.")
                 return
             
             # Attempt to add the user to the database
