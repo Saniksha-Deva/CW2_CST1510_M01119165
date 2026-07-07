@@ -1,7 +1,7 @@
 import streamlit as st
 from hashing import generate_hash, is_valid_hash
 from app_model.db import get_connection
-from app_model.users import add_user, get_user
+from app_model.users import add_user, get_user, get_all_users, search_user, update_user, delete_user, update_user_role
 from app_model.cyber_incidents import get_all_cyber_incidents
 from app_model.metadatas import get_all_datasets_metadata
 from app_model.it_tickets import get_all_it_tickets
@@ -191,6 +191,7 @@ def datasets_dashboard():
     """Displays information about the data"""
     st.set_page_config(
         page_title="Datasets Metadata Dashboard",
+        page_icon="📊",
         layout="wide"
     )
 
@@ -231,6 +232,7 @@ def it_tickets_dashboard():
     """Displays information about the IT tickets"""
     st.set_page_config(
         page_title="IT Tickets Dashboard",
+        page_icon="🎫",
         layout="wide"
     )
 
@@ -281,7 +283,177 @@ def it_tickets_dashboard():
     st.line_chart(ticket_counts, x='created_at', y='Ticket Count', x_label='Month', y_label="Number of Tickets")
     
 # ---------- Admin Dashboard and Features ----------
+
+def manage_users(conn):
     
+    st.subheader("Registered Users")
+    with st.container(border=True):
+        search_term = st.text_input("Search", placeholder="Search by Name", label_visibility="collapsed")
+        if search_term:
+            names = search_user(conn, search_term)
+        else:
+            names = get_all_users(conn)
+
+        if names:
+            df = pd.DataFrame(names, columns=["id", "username", "password_hash", "role"])
+
+            # Display table headers manually
+            col1, col2, col3, col4, col5, col6 = st.columns(6)
+            col1.write("ID")
+            col2.write("Name")
+            col3.write("Role")
+            col4.write("Edit")
+            col5.write("Promote User")
+            col6.write("Delete")
+
+            for index, row in df.iterrows():
+                    col1, col2, col3, col4, col5, col6 = st.columns(6)
+                    col1.write(row['id'])
+                    col2.write(row['username'])
+                    col3.write(row['role'])
+                    
+                    # Edit a user
+                    with col4.expander("Edit"):
+                        new_name = st.text_input("New Name", value=row['username'], key=f"input_{index}")
+                        if st.button("Save Changes", key=f"save_{index}"):
+                            update_user(conn, row['username'], new_name)
+                            st.success("Updated!")
+                            st.rerun()
+                    
+                    # Promote user to admin
+                    with col5.popover("Promote"):
+                        if row['role'] == 'admin':
+                            st.info(f"{row['username']} is already an Admin.")
+                            st.warning(f"Change {row['username']} to User?")
+                            if st.button("Confirm", key=f"demote_{index}"):
+                                update_user_role(conn, row['username'], 'user')
+                                st.success("Changed back to regular user!")
+                                st.rerun()
+                        else:
+                            st.warning(f"Promote {row['username']} to Admin role?")
+                            if st.button("Confirm Promotion", key=f"promote_{row['username']}_{index}"):
+                                # Calls your model's function to change role to 'admin'
+                                update_user_role(conn, row['username'], 'admin')
+                                st.success("Upgraded to Admin!")
+                                st.rerun()
+
+                    # Delete a user 
+                    with col6.popover("Delete"):
+                        # Confirm deletion before deleting the user
+                        st.warning(f"Are you sure you want to delete {row['username']}?")
+                        
+                        if st.button("Yes, Confirm Delete", key=f"delete_{row['username']}_{index}"):
+                            delete_user(conn, row['username'])
+                            st.success("Deleted!")
+                            st.rerun()
+
+
+def dashboard_overview():
+    cursor = conn.cursor()
+
+    cyber_col, it_col = st.columns(2)
+
+    with cyber_col:
+        # Cyber Incidents Metrics
+        with st.container(border=True):
+            st.subheader("Cyber Incidents 🛡️")
+            # Count cyber incidents with status Open
+            cursor.execute("SELECT COUNT(*) FROM cyber_incidents WHERE status = 'Open'")
+            open_count = cursor.fetchone()[0]
+
+            # Count cyber incidents with status In Progress
+            cursor.execute("SELECT COUNT(*) FROM cyber_incidents WHERE status = 'In Progress'")
+            progress_count = cursor.fetchone()[0]
+
+            # Count cyber incidents with status Resolved
+            cursor.execute("SELECT COUNT(*) FROM cyber_incidents WHERE status = 'Resolved'")
+            resolved_count = cursor.fetchone()[0]
+
+            # Count cyber incidents with status Closed
+            cursor.execute("SELECT COUNT(*) FROM cyber_incidents WHERE status = 'Closed'")
+            closed_count = cursor.fetchone()[0]
+
+            col1, col2, col3, col4 = st.columns(4)
+
+        # Maximum value for progress bar
+            max_value = 50
+
+            with col1:
+                with st.container(border=True):
+                    st.metric(label="Open", value=open_count)
+                    st.progress(min(open_count / max_value, 1.0))
+            with col2:
+                with st.container(border=True):
+                    st.metric(label="In Progress", value=progress_count)
+                    st.progress(min(progress_count / max_value, 1.0))
+            with col3:
+                with st.container(border=True):
+                    st.metric(label="Resolved", value=resolved_count)
+                    st.progress(min(resolved_count / max_value, 1.0))
+            with col4:
+                with st.container(border=True):
+                    st.metric(label="Closed", value=closed_count)
+                    st.progress(min(closed_count / max_value, 1.0))
+
+    with it_col:
+        # IT tickets Metrics
+        with st.container(border=True):
+            st.subheader("IT Tickets 🎫")
+            # Count IT tickets with status Open
+            cursor.execute("SELECT COUNT(*) FROM it_tickets WHERE status = 'Open'")
+            open_count = cursor.fetchone()[0]
+
+            # Count IT tickets with status In Progress
+            cursor.execute("SELECT COUNT(*) FROM it_tickets WHERE status = 'In Progress'")
+            progress_count = cursor.fetchone()[0]
+
+            # Count IT tickets with status Waiting for User
+            cursor.execute("SELECT COUNT(*) FROM it_tickets WHERE status = 'Waiting for User'")
+            waiting_count = cursor.fetchone()[0]
+
+            # Count IT tickets with status Resolved
+            cursor.execute("SELECT COUNT(*) FROM it_tickets WHERE status = 'Resolved'")
+            resolved_count = cursor.fetchone()[0]
+
+            col1, col2, col3, col4 = st.columns(4)
+
+            # Maximum value for progress bar
+            max_value = 100
+
+            with col1:
+                with st.container(border=True):
+                    st.metric(label="Open", value=open_count)
+                    st.progress(min(open_count / max_value, 1.0))
+            with col2:
+                with st.container(border=True):
+                    st.metric(label="In Progress", value=progress_count)
+                    st.progress(min(progress_count / max_value, 1.0))
+            with col3:
+                with st.container(border=True):
+                    st.metric(label="Waiting for User", value=waiting_count)
+                    st.progress(min(waiting_count / max_value, 1.0))
+            with col4:
+                with st.container(border=True):
+                    st.metric(label="Resolved", value=resolved_count)
+                    st.progress(min(resolved_count / max_value, 1.0))
+
+    with st.container(border=True):
+         # Count total users
+        cursor.execute("SELECT COUNT(*) FROM users")
+        user_count = cursor.fetchone()[0]
+       
+        # Count total datasets
+        cursor.execute("SELECT COUNT(*) FROM datasets_metadata")
+        dataset_count = cursor.fetchone()[0]
+        
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.metric(label="Total Users👤", value=user_count)
+        with col2:
+            st.metric(label="Total Datasets 📊", value=dataset_count)
+
+
 def admin_dashboard():
     st.set_page_config(
         page_title="Admin Dashboard",
@@ -299,7 +471,7 @@ def admin_dashboard():
 
     cursor.execute("SELECT role FROM users WHERE username = ?", (current_user,))
     result = cursor.fetchone()
-    conn.close()
+    
 
     user_role = result[0] if result else None
 
@@ -308,6 +480,11 @@ def admin_dashboard():
         st.stop()
 
     st.title("Welcome to the Admin Dashboard")
+
+    dashboard_overview()
+    
+    manage_users(conn)
+    conn.close()
 
 # ---------- Configure Pages for navigation ----------
 

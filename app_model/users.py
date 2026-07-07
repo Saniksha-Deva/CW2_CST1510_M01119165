@@ -20,7 +20,7 @@ def get_all_users(conn):
     sql = '''SELECT * FROM users '''
     cur.execute(sql)
     users = cur.fetchall()
-    conn.close()
+    #conn.close()
     return(users)
 
 # Get one user by username
@@ -30,7 +30,7 @@ def get_user(conn, name):
     param = (name,)
     cur.execute(sql, param)
     user = cur.fetchone()
-    conn.close()
+    #conn.close()
     return(user)
 
 # UPDATE - change a username
@@ -56,3 +56,12 @@ def update_user_role(conn, username, new_role):
     param = (new_role, username)
     cur.execute(sql, param)
     conn.commit()
+
+# Search user by name
+def search_user(conn, search_term):
+    cur = conn.cursor()
+    sql = 'SELECT * FROM users WHERE username LIKE ?'
+    param = ('%' + search_term + '%',)
+    cur.execute(sql, param)
+    users = cur.fetchall()
+    return(users)
