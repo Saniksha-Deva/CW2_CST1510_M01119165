@@ -7,6 +7,7 @@ from app_model.metadatas import get_all_datasets_metadata
 from app_model.it_tickets import get_all_it_tickets
 import pandas as pd
 import plotly.express as px
+import time 
 
 
 conn = get_connection()
@@ -54,11 +55,15 @@ def login_page():
         if not login_username.strip() or not login_password.strip():
             st.error("Enter both a username and password.")
             return
+        
+        if not login_limit(action="check"):
+            return
 
         # Get the user record from the database
         user = get_user(conn, login_username)
 
         if user is None:
+            login_limit(action="log", login_success=False)
             st.error("Incorrect username or password")
             return 
         
@@ -66,12 +71,14 @@ def login_page():
 
         # Verify the password against the stored hash
         if login_username and is_valid_hash(login_password, user_hash):
+            login_limit(action="update", login_success=True)
             st.session_state.logged_in = True
             st.session_state.username = user_name
             st.success("Logged in successfully!")
             # Redirect the user to the dashboard after logging in
             st.switch_page(cyber)
         else:
+            login_limit(action="update", login_success=False)
             st.error("Incorrect username or password")
 
 
@@ -503,6 +510,61 @@ def admin_dashboard():
     
     manage_users(conn)
     conn.close()
+
+
+def countdown(countdown_seconds):
+    countdown_placeholder = st.empty()
+    for i in range(countdown_seconds, 0, -1):
+        countdown_placeholder.error(f"Rate limit exceeded. Please wait {i} seconds.")
+        time.sleep(1)
+    
+    st.session_state.login_attempt = 0
+    st.session_state.rate_limit_time = 0
+    countdown_placeholder.success("You can try logging in now.")
+
+def login_limit(action, login_success=None):
+    if 'login_attempt' not in st.session_state:
+        st.session_state.login_attempt = 0
+    if 'rate_limit_time' not in st.session_state:
+        st.session_state.rate_limit_time = 0
+
+    attempts = 3
+    rate_limit = 300
+
+    current_time = time.time()
+    time_since_locked_out = current_time - st.session_state.rate_limit_time
+    lockout_time = int(rate_limit - time_since_locked_out)
+
+    if action == "check":
+        if st.session_state.login_attempt >= attempts:
+            if lockout_time > 0:
+                
+                countdown(lockout_time)
+                return False
+            else:
+                st.session_state.login_attempt = 0
+                st.session_state.rate_limit_time = 0
+        return True
+    
+    if action == "update":
+        if login_success is False:
+            st.session_state.login_attempt += 1
+
+            remaining_attempts = attempts - st.session_state.login_attempt
+
+            if st.session_state.login_attempt >= attempts:
+                st.session_state.rate_limit_time = time.time()
+                countdown(rate_limit)
+                
+
+            else:
+                st.warning(f"You have {remaining_attempts} attempts left.")
+
+        elif login_success is True:
+            st.session_state.login_attempt = 0
+            st.session_state.rate_limit_time = 0
+
+        
 
 # ---------- Configure Pages for navigation ----------
 
