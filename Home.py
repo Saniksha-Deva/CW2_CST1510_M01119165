@@ -8,6 +8,7 @@ from app_model.it_tickets import get_all_it_tickets
 import pandas as pd
 import plotly.express as px
 import time 
+from groq import Groq
 
 
 conn = get_connection()
@@ -204,6 +205,8 @@ def cyber_incidents_dashboard():
     st.subheader(f"Cyber Incidents with Status: {status_}")
     st.bar_chart(filtered_status['category'].value_counts())
 
+    ai_analyser(domain="Cybersecurity")
+
     # Logs out a user and redirects them to the home page
     st.divider()
     if st.button("Log out"):
@@ -252,6 +255,8 @@ def datasets_dashboard():
     # Horizontal bar chart to compare the sizes of the datsets
     st.subheader("Size of Datasets")
     st.bar_chart(datasets_data, x='name', y='rows', horizontal=True, sort="rows")
+
+    ai_analyser(domain="Data Science")
 
 def it_tickets_dashboard():
     """Displays information about the IT tickets"""
@@ -306,6 +311,8 @@ def it_tickets_dashboard():
     ticket_counts['created_at'] = pd.Categorical(ticket_counts['created_at'], categories=month_order, ordered=True)
     ticket_counts = ticket_counts.sort_values('created_at')
     st.line_chart(ticket_counts, x='created_at', y='Ticket Count', x_label='Month', y_label="Number of Tickets")
+
+    ai_analyser(domain="IT Operations")
     
 # ---------- Admin Dashboard and Features ----------
 
@@ -564,7 +571,111 @@ def login_limit(action, login_success=None):
             st.session_state.login_attempt = 0
             st.session_state.rate_limit_time = 0
 
-        
+SYSTEM_PROMPTS = {
+    "Cybersecurity": """
+You are senior cybersecurity analyst with expertise in incident response.
+when analysing incidents:
+- Reference MITRE ATT&CK techniques where relevant
+- Structure your response: Root Cause, Immediate Actions, Prevention, Risk Level
+- Use precise technical language
+- Prioritise actionable recommendations""",
+"Data Science": """
+You are an experienced data scientist and ML engineer.
+when helping with analysis:
+- Suggest appropriate statistical methods and visualisation types
+- Explain your reasoning clearly for a mixed-audience
+- Flag data quality issues (missing values, outliers, bias)
+- Recommend concrete next steps""",
+"IT Operations": """
+You are an IT operations lead managing enterpsrise infrastructure.
+When triaging tickets:
+- Prioritise by business impact and urgency
+- Suggest systematic troubleshooting steps
+- Identify patterns that indicate systematic issues
+- Recommend preventive measures"""
+}
+
+def load_domain_data(domain):
+    """Load the relevant dataframe for a given domain."""
+   
+    if domain == "Cybersecurity":
+        df = get_all_cyber_incidents(conn)
+    elif domain == "Data Science":
+        df = get_all_datasets_metadata(conn)
+    elif domain == "IT Operations":
+        df = get_all_it_tickets(conn)
+    else:
+        df = None
+    return df
+
+def ai_analyser(domain, show_header: bool = True, show_controls: bool = True):
+    # Auth guard
+    if not st.session_state.get("logged_in", False):
+        st.switch_page(st.session_state.home); st.stop()
+
+    if domain not in SYSTEM_PROMPTS:
+        st.error(f"Unknown domain '{domain}'. Must be one of: {list(SYSTEM_PROMPTS.keys())}")
+        st.stop()
+
+    client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+
+    # state_key used so that each domain uses its own system prompt
+    state_key = f"ai_messages_{domain.replace(' ', '_').lower()}"
+
+     # Load the domain's data and turn it into text the AI can read
+    df = load_domain_data(domain)
+    if df is not None and not df.empty:
+        data_context = df.to_csv(index=True)
+    else:
+        data_context = "No records available."
+
+    system_content = f"""{SYSTEM_PROMPTS[domain]}
+    You have access to the following {domain} data (CSV format, index = record number):
+    {data_context}
+    When the user refers to a record, records, or a range (e.g. "record 3", "from 2 to 5", "all critical ones"), use the data above to answer. If the data can't answer the question, say so clearly.
+    """
+
+    # Initialise chat
+    if state_key not in st.session_state:
+        st.session_state[state_key] = [{"role": "system", "content": SYSTEM_PROMPTS[domain]}]
+    
+    if show_header:
+        st.title(f"{domain} Assistant")
+
+    if show_controls:
+        col1, col2 = st.columns([4,1])
+        with col1:
+            st.metric("Messages", max(0, len(st.session_state[state_key]) - 1))
+        with col2:
+            if st.button("Clear Chat", key=f"clear_{state_key}"):
+                st.session_state[state_key] = [{"role": "system", "content": SYSTEM_PROMPTS[domain]}]
+                st.rerun()
+
+    # Display history
+    for msg in st.session_state[state_key]:
+        if msg["role"] != "system":
+            with st.chat_message(msg["role"]):
+                st.write(msg["content"])
+
+    # New input
+    if user_input := st.chat_input("Ask a question...", key=f"input_{state_key}"):
+        st.session_state[state_key].append({"role": "user", "content": "user_input"})
+        with st.chat_message("user"):
+            st.write(user_input)
+
+        with st.chat_message("assistant"):
+            response = client.chat.completions.create(
+                model="openai/gpt-oss-120b", messages=st.session_state[state_key], temperature=0, stream=True
+            )
+            full_reply = ""; placeholder = st.empty()
+            for chunk in response:
+                delta = chunk.choices[0].delta.content
+                if delta: full_reply += delta; placeholder.write(full_reply + "▌ ")
+            placeholder.write(full_reply)
+            st.session_state[state_key].append({"role": "assistant", "content": full_reply})
+
+
+    
 
 # ---------- Configure Pages for navigation ----------
 

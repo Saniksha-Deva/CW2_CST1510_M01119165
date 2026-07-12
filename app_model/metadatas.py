@@ -9,5 +9,5 @@ def migrate_datasets_metadata(conn):
 def get_all_datasets_metadata(conn):
     sql = 'SELECT * FROM datasets_metadata'
     data = pd.read_sql(sql, conn)
-    conn.close()
+    #conn.close()
     return(data)
