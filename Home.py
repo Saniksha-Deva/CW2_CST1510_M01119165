@@ -57,14 +57,14 @@ def login_page():
             st.error("Enter both a username and password.")
             return
         
-        if not login_limit(action="check"):
+        if not login_limit(login_username, action="check"):
             return
 
         # Get the user record from the database
         user = get_user(conn, login_username)
 
         if user is None:
-            login_limit(action="log", login_success=False)
+            login_limit(login_username, action="update", login_success=False)
             st.error("Incorrect username or password")
             return 
         
@@ -72,14 +72,14 @@ def login_page():
 
         # Verify the password against the stored hash
         if login_username and is_valid_hash(login_password, user_hash):
-            login_limit(action="update", login_success=True)
+            login_limit(login_username, action="update", login_success=True)
             st.session_state.logged_in = True
             st.session_state.username = user_name
             st.success("Logged in successfully!")
             # Redirect the user to the dashboard after logging in
             st.switch_page(cyber)
         else:
-            login_limit(action="update", login_success=False)
+            login_limit(login_username, action="update", login_success=False)
             st.error("Incorrect username or password")
 
 
@@ -518,18 +518,32 @@ def admin_dashboard():
     manage_users(conn)
     conn.close()
 
+    unlock_user()
 
-def countdown(countdown_seconds):
+# Track locked users
+if "locked_users" not in st.session_state:
+    st.session_state.locked_users = {}
+
+def countdown(username, countdown_seconds):
     countdown_placeholder = st.empty()
     for i in range(countdown_seconds, 0, -1):
+        if username not in st.session_state.locked_users:
+            st.session_state.login_attempt = 0
+            st.session_state.rate_limit_time = 0
+            countdown_placeholder.success(f"An admin has unlocked your account. You can log in now.")
+            st.rerun()
+
         countdown_placeholder.error(f"Rate limit exceeded. Please wait {i} seconds.")
         time.sleep(1)
+
+    if username in st.session_state.locked_users:
+        del st.session_state.locked_users[username]
     
     st.session_state.login_attempt = 0
     st.session_state.rate_limit_time = 0
     countdown_placeholder.success("You can try logging in now.")
 
-def login_limit(action, login_success=None):
+def login_limit(username, action, login_success=None):
     if 'login_attempt' not in st.session_state:
         st.session_state.login_attempt = 0
     if 'rate_limit_time' not in st.session_state:
@@ -537,21 +551,35 @@ def login_limit(action, login_success=None):
 
     attempts = 3
     rate_limit = 300
-
     current_time = time.time()
-    time_since_locked_out = current_time - st.session_state.rate_limit_time
-    lockout_time = int(rate_limit - time_since_locked_out)
+
+    if username in st.session_state.locked_users:
+        lockout_end = st.session_state.locked_users[username]
+        lockout_time = int(lockout_end - current_time)
+
+        if lockout_time > 0:
+            if action == "check":
+                return False
+        else:
+            del st.session_state.locked_users[username]
+            st.session_state.login_attempt = 0
+            st.session_state.rate_limit_time = 0
 
     if action == "check":
-        if st.session_state.login_attempt >= attempts:
-            if lockout_time > 0:
-                
-                countdown(lockout_time)
-                return False
-            else:
-                st.session_state.login_attempt = 0
-                st.session_state.rate_limit_time = 0
         return True
+    #time_since_locked_out = current_time - st.session_state.rate_limit_time
+    #lockout_time = int(rate_limit - time_since_locked_out)
+
+    #if action == "check":
+      #  if st.session_state.login_attempt >= attempts:
+        #    if lockout_time > 0:
+                
+         #       countdown(lockout_time)
+         #       return False
+           # else:
+            #    st.session_state.login_attempt = 0
+            #    st.session_state.rate_limit_time = 0
+       # return True
     
     if action == "update":
         if login_success is False:
@@ -560,8 +588,9 @@ def login_limit(action, login_success=None):
             remaining_attempts = attempts - st.session_state.login_attempt
 
             if st.session_state.login_attempt >= attempts:
-                st.session_state.rate_limit_time = time.time()
-                countdown(rate_limit)
+                st.session_state.locked_users[username] = current_time + rate_limit
+                st.session_state.rate_limit_time = current_time
+                countdown(username, rate_limit)
                 
 
             else:
@@ -570,6 +599,30 @@ def login_limit(action, login_success=None):
         elif login_success is True:
             st.session_state.login_attempt = 0
             st.session_state.rate_limit_time = 0
+            if username in st.session_state.locked_users:
+                del st.session_state.locked_users[username]
+
+def unlock_user():
+    st.subheader("Locked Users")
+    with st.container():
+        if not st.session_state.locked_users:
+            st.info("No users are currently locked out.")
+            return
+        
+        for username, lockout_end in list(st.session_state.locked_users.items()):
+            remainig = int(lockout_end - time.time())
+
+            if remainig > 0:
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.write(f"{username} - {remainig} seconds remaining")
+                with col2:
+                    if st.button(f"Unlock {username}", key=f"unlock_{username}"):
+                        del st.session_state.locked_users[username]
+                        st.success(f"Unlocked {username}")
+                        st.rerun()
+        else:
+            del st.session_state.locked_users[username]
 
 SYSTEM_PROMPTS = {
     "Cybersecurity": """
