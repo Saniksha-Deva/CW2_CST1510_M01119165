@@ -9,6 +9,8 @@ import pandas as pd
 import plotly.express as px
 import time 
 from groq import Groq
+from PIL import Image
+import bcrypt
 
 
 conn = get_connection()
@@ -1006,7 +1008,87 @@ def ai_analyser(domain, show_header: bool = True, show_controls: bool = True):
             st.session_state[state_key].append({"role": "assistant", "content": full_reply})
 
 
-    
+def account_settings():
+    st.set_page_config(
+        page_title="Account Settings",
+        page_icon="⚙️",
+        layout="wide"
+    )
+
+    st.title("Account Settings")
+    st.subheader("Manage your account and profile.")
+
+    with st.container(border=True):
+        if "profile_picture" not in st.session_state:
+            st.session_state["profile_picture"] = None
+        col1, col2 = st.columns([1, 4], vertical_alignment="center")
+        with col2:
+            st.markdown("### Profile Picture")
+            st.write("JPG or PNG")
+
+            uploaded_file = st.file_uploader(
+                "Upload Photo",
+                type=["jpg", "png"],
+                label_visibility="collapsed",
+                key="profile_uploader"
+            )
+
+            if uploaded_file is not None:
+                st.session_state["profile_picture"] = Image.open(uploaded_file).resize((125, 125))
+
+            if st.session_state is not None:
+                with col1:
+                    st.image(st.session_state["profile_picture"])
+                with col2:
+                    if st.button("Remove"):
+                        st.session_state["profile_picture"] = None
+                        if "profile_uploader" in st.session_state:
+                            del st.session_state["profile_uploader"]
+                        st.rerun()
+
+    with st.container(border=True):
+        st.subheader("Update Username")
+        with st.expander("Edit"):
+            current_username = st.session_state.get('username')
+            new_name = st.text_input("New Name", value=current_username, key="update_username")
+            if st.button("Save Changes", key="save_username"):
+                update_user(conn, current_username, new_name)
+                st.session_state['username'] = new_name
+                st.success("Updated!")
+                st.rerun()
+
+    with st.container(border=True):
+        st.subheader("Password Management")
+        with st.expander("Change Password"):
+            current_password = st.text_input("Current Password", type="password")
+            new_password = st.text_input("New Password", type="password")
+            confirm_password = st.text_input("Confirm New Password", type="password")
+
+            if st.button("Update Password"):
+                if not current_password or not new_password or not confirm_password:
+                    st.error("All fields are required")
+                elif new_password != confirm_password:
+                    st.error("Passwords do not match.")
+                else:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT password_hash FROM users WHERE username = ?", (current_username,))
+                    result = cursor.fetchone()
+
+                    if result:
+                        stored_hash = result[0]
+
+                        if bcrypt.checkpw(current_password.encode('utf-8'), stored_hash.encode('utf-8')):
+                            new_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+                            cursor.execute("UPDATE users SET password_hash = ? WHERE username = ?", (new_hash, current_username))
+                            conn.commit()
+
+                            st.success("Password updated successfully!")
+                            st.rerun()
+                        else:
+                            st.error("Current password is incorrect.")
+
+
 
 # ---------- Configure Pages for navigation ----------
 
@@ -1018,6 +1100,7 @@ cyber = st.Page(cyber_incidents_dashboard, title="Cyber Incidents Dashboard")
 datasets = st.Page(datasets_dashboard, title="Datasets Metadata Dashboard")
 it_dashboard = st.Page(it_tickets_dashboard, title="IT Tickets Dashboard")
 admin = st.Page(admin_dashboard, title="Admin Dashboard")
+account = st.Page(account_settings, title="Account Settings")
 
 st.session_state.home = home
 st.session_state.login = login
@@ -1030,10 +1113,10 @@ if 'logged_in' not in st.session_state:
 
 # ---------- Page Navigation ----------
 
-pages = [home, login, register, dashboard, cyber, datasets, it_dashboard, admin]
+pages = [home, login, register, dashboard, cyber, datasets, it_dashboard, admin, account]
 if st.session_state.logged_in:
     # Pages that can be accessed after a user is logged in
-    pages = [dashboard, cyber, datasets, it_dashboard, admin]
+    pages = [dashboard, cyber, datasets, it_dashboard, admin, account]
 
     with st.sidebar:
         if st.button("Log out"):
