@@ -1,9 +1,23 @@
-import sqlite3
-import pandas as pd
-
-from app_model.db import get_connection
-from app_model.users import add_user, get_user, update_user_role, totp_column
+import streamlit as st
 from hashing import generate_hash, is_valid_hash
+from app_model.db import get_connection
+from app_model.users import add_user, get_user, get_all_users, search_user, update_user, delete_user, update_user_role, create_user, totp_column, set_totp_secret
+from hashing import generate_hash, is_valid_hash
+from app_model.cyber_incidents import get_all_cyber_incidents
+from app_model.metadatas import get_all_datasets_metadata
+from app_model.it_tickets import get_all_it_tickets
+import pandas as pd
+import plotly.express as px
+import time 
+from groq import Groq
+from PIL import Image
+import bcrypt
+import pyotp
+import qrcode
+import io
+from io import BytesIO
+from streamlit_extras.dataframe_explorer import *
+
 
 conn = get_connection()
 
@@ -45,24 +59,6 @@ def main():
 
 # Inserting totp_secret column
 totp_column(conn)
-
-import streamlit as st
-from hashing import generate_hash, is_valid_hash
-from app_model.db import get_connection
-from app_model.users import add_user, get_user, get_all_users, search_user, update_user, delete_user, update_user_role, create_user, set_totp_secret
-from app_model.cyber_incidents import get_all_cyber_incidents
-from app_model.metadatas import get_all_datasets_metadata
-from app_model.it_tickets import get_all_it_tickets
-import pandas as pd
-import plotly.express as px
-import time 
-from groq import Groq
-from PIL import Image
-import bcrypt
-import pyotp
-import qrcode
-import io
-from io import BytesIO
 
 
 conn = get_connection()
@@ -286,11 +282,11 @@ def cyber_incidents_dashboard():
 
     with col1:
         st.subheader(f"Cyber Incidents with Severity: {severity_}")
-        st.bar_chart(filtered_data['category'].value_counts())
+        st.bar_chart(filtered_data['category'].value_counts(), height=350)
 
     with col2:
         st.subheader("Category Trend Over Time")
-        st.line_chart(filtered_data, x= 'timestamp', y= 'category')
+        st.line_chart(filtered_data, x= 'timestamp', y= 'category', height=350)
 
     col3, col4 = st.columns(2)
 
@@ -350,18 +346,23 @@ def datasets_dashboard():
     with col1:
         # Line chart showing datset uploads over time
         st.subheader("Datasets uploaded over time")
-        st.line_chart(datasets_data, x= 'upload_date', y= 'name')
+        st.line_chart(datasets_data, x= 'upload_date', y= 'name', height=300)
 
     with col2:
         # Pie chart showing the total datasets uploaded by each role
         st.subheader("Uploaded Data")
         upload_data = datasets_data['uploaded_by'].value_counts()
-        upload_chart = px.pie(values=upload_data, names=upload_data.index)
+        upload_chart = px.pie(values=upload_data, names=upload_data.index, height=300)
         st.plotly_chart(upload_chart)
 
     # Horizontal bar chart to compare the sizes of the datsets
     st.subheader("Size of Datasets")
     st.bar_chart(datasets_data, x='name', y='rows', horizontal=True, sort="rows")
+
+    # Datasets table
+    dataframe = datasets_data
+    filtered_df = dataframe_explorer(dataframe, case=False)
+    st.dataframe(filtered_df, width="stretch")
 
     ai_analyser(domain="Data Science")
 
@@ -418,6 +419,11 @@ def it_tickets_dashboard():
     ticket_counts['created_at'] = pd.Categorical(ticket_counts['created_at'], categories=month_order, ordered=True)
     ticket_counts = ticket_counts.sort_values('created_at')
     st.line_chart(ticket_counts, x='created_at', y='Ticket Count', x_label='Month', y_label="Number of Tickets")
+
+    # IT tickets table
+    dataframe = it_data
+    filtered_df = dataframe_explorer(dataframe, case=False)
+    st.dataframe(filtered_df, width="stretch")
 
     ai_analyser(domain="IT Operations")
     
