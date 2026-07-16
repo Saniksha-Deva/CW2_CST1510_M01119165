@@ -2,7 +2,7 @@ import sqlite3
 import pandas as pd
 
 from app_model.db import get_connection
-from app_model.users import add_user, get_user, update_user_role
+from app_model.users import add_user, get_user, update_user_role, totp_column
 from hashing import generate_hash, is_valid_hash
 
 conn = get_connection()
@@ -43,10 +43,13 @@ def main():
 #if __name__ =='__main__':
 #    main()
 
+# Inserting totp_secret column
+totp_column(conn)
+
 import streamlit as st
 from hashing import generate_hash, is_valid_hash
 from app_model.db import get_connection
-from app_model.users import add_user, get_user, get_all_users, search_user, update_user, delete_user, update_user_role
+from app_model.users import add_user, get_user, get_all_users, search_user, update_user, delete_user, update_user_role, create_user, set_totp_secret
 from app_model.cyber_incidents import get_all_cyber_incidents
 from app_model.metadatas import get_all_datasets_metadata
 from app_model.it_tickets import get_all_it_tickets
@@ -56,6 +59,10 @@ import time
 from groq import Groq
 from PIL import Image
 import bcrypt
+import pyotp
+import qrcode
+import io
+from io import BytesIO
 
 
 conn = get_connection()
@@ -96,6 +103,8 @@ def login_page():
     with st.form("login_form"):
         login_username = st.text_input("Username", key="login_username")
         login_password = st.text_input("Password", type="password", key="login_password")
+        # Request the second factor (6-digit code)
+        totp_code = st.text_input("2FA Code", max_chars=6)
         submitted = st.form_submit_button("Login")
 
     if submitted:
@@ -115,16 +124,44 @@ def login_page():
             st.error("Incorrect username or password")
             return 
         
-        id, user_name, user_hash, *_ = user
+        id, user_name, user_hash, role, totp_secret = user
 
         # Verify the password against the stored hash
         if login_username and is_valid_hash(login_password, user_hash):
-            login_limit(login_username, action="update", login_success=True)
-            st.session_state.logged_in = True
-            st.session_state.username = user_name
-            st.success("Logged in successfully!")
-            # Redirect the user to the dashboard after logging in
-            st.switch_page(cyber)
+
+            if totp_secret is None:
+                st.warning("2FA setup required. Scan this QR code, then enter the code and log in again.")
+
+                if "pending_secret" not in st.session_state:
+                    st.session_state["pending_secret"] = pyotp.random_base32()
+
+                new_secret = st.session_state["pending_secret"]
+                uri = pyotp.TOTP(new_secret).provisioning_uri(name=login_username, issuer_name="MySecureApp")
+                qr = qrcode.make(uri)
+                buf = io.BytesIO()
+                qr.save(buf, format="PNG")
+                st.image(buf.getvalue(), caption="Scan this QR code with Google Authenticator or Authy")
+                st.write("Manual key: ", new_secret)
+
+                if totp_code.strip() and pyotp.TOTP(new_secret).verify(totp_code):
+                    set_totp_secret(conn, login_username, new_secret)
+                    del st.session_state["pending_secret"]
+                    st.success("2FA enabled. Please log in again.")
+                return
+                
+
+            totp = pyotp.TOTP(totp_secret)
+            # Verify 2FA code
+            if totp.verify(totp_code):
+                login_limit(login_username, action="update", login_success=True)
+                st.session_state.logged_in = True
+                st.session_state.username = user_name
+                st.success("Logged in successfully!")
+                # Redirect the user to the dashboard after logging in
+                st.switch_page(cyber)
+            else:
+                login_limit(login_username, action="update", login_success=False)
+                st.error("Invalid 2FA code")
         else:
             login_limit(login_username, action="update", login_success=False)
             st.error("Incorrect username or password")
@@ -172,9 +209,32 @@ def register_page():
             
             # Attempt to add the user to the database
             try:
-                add_user(conn, register_username, hash_password)
+                totp_secret = pyotp.random_base32()
+                create_user(conn, register_username, hash_password, totp_secret)
                 st.success("Account created! Please log in.")
-                st.switch_page(home_page)
+
+                # Generate provisioning URI for the QR code
+                totp = pyotp.TOTP(totp_secret)
+                uri = totp.provisioning_uri(name=register_username, issuer_name="MySecureApp")
+
+                # Display the QR code for the authenticator app
+                qr = qrcode.make(uri)
+                buf = io.BytesIO()
+                qr.save(buf, format="PNG")
+
+                col_qr, col_txt = st.columns([1, 1.2])
+                with col_qr:
+                    # Display the QR code image generated in memory
+                    st.image(buf.getvalue(), caption="Scan this QR code with Google Authenticator or Authy", use_container_width=True)
+                with col_txt:
+                    # Provide the manual secret key in case the user cannot scan the QR code
+                    st.markdown("**Manual Configuration**")
+                    st.caption("If you cannot scan the QR code, use this secret key: ")
+                    st.code(totp_secret , language=None)
+                    st.warning("Enter this key manually into your Authenticator App")
+
+                st.write("Manual Secret Key (if QR fails): ", totp_secret)
+
             except Exception as e:
                 st.error("Username already exists.")
             finally:
@@ -374,7 +434,7 @@ def manage_users(conn):
             names = get_all_users(conn)
 
         if names:
-            df = pd.DataFrame(names, columns=["id", "username", "password_hash", "role"])
+            df = pd.DataFrame(names, columns=["id", "username", "password_hash", "role", "totp_secret"])
 
             # Display table headers manually
             col1, col2, col3, col4, col5, col6 = st.columns(6)

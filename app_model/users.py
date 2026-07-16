@@ -1,3 +1,5 @@
+import sqlite3
+
 def add_user(conn, name, hash):
     cur = conn.cursor()
     sql = '''INSERT INTO users (username, password_hash) VALUES (?, ?) '''
@@ -65,3 +67,29 @@ def search_user(conn, search_term):
     cur.execute(sql, param)
     users = cur.fetchall()
     return(users)
+
+# Adding column for totp secrets
+def totp_column(conn):
+    cur = conn.cursor()
+    try:
+        sql = 'ALTER TABLE users ADD COLUMN totp_secret TEXT DEFAULT NULL'
+        cur.execute(sql)
+        conn.commit()
+    except sqlite3.OperationalError as e:
+        # Do not do anything since the column already exists
+        pass
+
+def create_user(conn, name, hash, totp_secret, role="user"):
+    cur = conn.cursor()
+    sql = 'INSERT INTO users (username, password_hash, role, totp_secret) VALUES (?, ?, ?, ?)'
+    param = (name, hash, role, totp_secret)
+    cur.execute(sql, param)
+    conn.commit()
+
+# Assign totp_secret to users with Null totp_secret
+def set_totp_secret(conn, username, secret):
+    cur = conn.cursor()
+    sql = 'UPDATE users SET totp_secret = ? WHERE username = ?'
+    param = (secret, username)
+    cur.execute(sql, param)
+    conn.commit()
