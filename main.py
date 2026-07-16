@@ -17,6 +17,7 @@ import qrcode
 import io
 from io import BytesIO
 from streamlit_extras.dataframe_explorer import *
+from PIL import Image, ImageDraw
 
 
 conn = get_connection()
@@ -152,6 +153,7 @@ def login_page():
                 login_limit(login_username, action="update", login_success=True)
                 st.session_state.logged_in = True
                 st.session_state.username = user_name
+                st.session_state.role = role
                 st.success("Logged in successfully!")
                 # Redirect the user to the dashboard after logging in
                 st.switch_page(cyber)
@@ -267,7 +269,7 @@ def cyber_incidents_dashboard():
     # Get all cyber incident records from the database
     cyber_data = get_all_cyber_incidents(conn)
 
-    st.title("Welcome to the Cyber Incidents Dashboard")
+    st.title(f"Welcome {st.session_state.username} to the Cyber Incidents Dashboard")
 
     cyber_data['timestamp'] = pd.to_datetime(cyber_data['timestamp'])
 
@@ -278,21 +280,28 @@ def cyber_incidents_dashboard():
         status_ = st.selectbox('Status', cyber_data['status'].unique())
     filtered_data = cyber_data[cyber_data['severity'] == severity_]
 
+    severity_colors = {
+        "Low": "#6FA989",
+        "Medium": "#D4B96A",
+        "High": "#D68C4A",
+        "Critical": "#C1554B"
+    }
+
     col1, col2 = st.columns(2)
 
     with col1:
         st.subheader(f"Cyber Incidents with Severity: {severity_}")
-        st.bar_chart(filtered_data['category'].value_counts(), height=350)
+        st.bar_chart(filtered_data['category'].value_counts(), height=350, color=severity_colors.get(severity_))
 
     with col2:
         st.subheader("Category Trend Over Time")
-        st.line_chart(filtered_data, x= 'timestamp', y= 'category', height=350)
+        st.line_chart(filtered_data, x= 'timestamp', y= 'category', height=350, color=severity_colors.get(severity_))
 
     col3, col4 = st.columns(2)
 
     with col3:
         st.subheader(f"Severity for {severity_} at certain times")
-        st.bar_chart(filtered_data['timestamp'].dt.hour.value_counts(), x_label="Hour of Day", y_label="Number of Incidents")
+        st.bar_chart(filtered_data['timestamp'].dt.hour.value_counts(), x_label="Hour of Day", y_label="Number of Incidents", color=severity_colors.get(severity_))
 
     with col4:
         st.subheader("Filtered Data")
@@ -300,13 +309,14 @@ def cyber_incidents_dashboard():
 
     # Pie chart showing total cyber incidents for each of the severity levels
     severity_level = cyber_data['severity'].value_counts()
-    severity_chart = px.pie(values=severity_level, names=severity_level.index, title="Total Cyber Incidents for each Severity level")
+    severity_chart = px.pie(values=severity_level, names=severity_level.index, title="Total Cyber Incidents for each Severity level",
+                            color=severity_level.index, color_discrete_map=severity_colors)
     st.plotly_chart(severity_chart)
 
     # Bar chart showing total cyber incidents for each category and filtered by status
     filtered_status = cyber_data[cyber_data['status'] == status_]
     st.subheader(f"Cyber Incidents with Status: {status_}")
-    st.bar_chart(filtered_status['category'].value_counts())
+    st.bar_chart(filtered_status['category'].value_counts(), color="#3A7CA5")
 
     ai_analyser(domain="Cybersecurity")
 
@@ -339,14 +349,14 @@ def datasets_dashboard():
     # Get all metadata records from the database 
     datasets_data = get_all_datasets_metadata(conn)
 
-    st.title("Welcome to the Datasets Metadata Dashboard")
+    st.title(f"Welcome {st.session_state.username} to the Datasets Metadata Dashboard")
 
     col1, col2 = st.columns(2)
 
     with col1:
         # Line chart showing datset uploads over time
         st.subheader("Datasets uploaded over time")
-        st.line_chart(datasets_data, x= 'upload_date', y= 'name', height=300)
+        st.line_chart(datasets_data, x= 'upload_date', y= 'name', height=300, color="#3A7CA5")
 
     with col2:
         # Pie chart showing the total datasets uploaded by each role
@@ -357,7 +367,7 @@ def datasets_dashboard():
 
     # Horizontal bar chart to compare the sizes of the datsets
     st.subheader("Size of Datasets")
-    st.bar_chart(datasets_data, x='name', y='rows', horizontal=True, sort="rows")
+    st.bar_chart(datasets_data, x='name', y='rows', horizontal=True, sort="rows", color="#3A7CA5")
 
     # Datasets table
     dataframe = datasets_data
@@ -387,7 +397,7 @@ def it_tickets_dashboard():
     # Get all IT ticket records from the database
     it_data = get_all_it_tickets(conn)
 
-    st.title("Welcome to the IT Tickets Dashboard")
+    st.title(f"Welcome {st.session_state.username} to the IT Tickets Dashboard")
 
     # Allow the user to choose a specific priority to focus on
     with st.sidebar:
@@ -395,9 +405,16 @@ def it_tickets_dashboard():
         priority_ = st.selectbox('priority', it_data['priority'].unique())
     filtered_data = it_data[it_data['priority'] == priority_]
 
+    priority_colors = {
+        "Low": "#6FA989",
+        "Medium": "#D4B96A",
+        "High": "#D68C4A",
+        "Critical": "#C1554B"
+    }
+
     # Bar chart showing count of status for selected priority
     st.subheader(f"Status for Priority: {priority_}")
-    st.bar_chart(filtered_data['status'].value_counts())
+    st.bar_chart(filtered_data['status'].value_counts(), color=priority_colors.get(priority_))
 
     # Pie chart showing count of tickets assigned to IT support filtered by priority
     st.subheader(f"Tickets with priority {priority_} and total assigned for each IT support")
@@ -407,7 +424,7 @@ def it_tickets_dashboard():
 
     # Bar chart showing resolution time for each ticket filtered by priority
     st.subheader("Resolution Time")
-    st.bar_chart(filtered_data, x='ticket_id', y='resolution_time_hours')
+    st.bar_chart(filtered_data, x='ticket_id', y='resolution_time_hours', color=priority_colors.get(priority_))
 
     it_data['created_at'] = pd.to_datetime(it_data['created_at'])
     # Line chart showing count of tickets created over time
@@ -418,7 +435,7 @@ def it_tickets_dashboard():
     month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
     ticket_counts['created_at'] = pd.Categorical(ticket_counts['created_at'], categories=month_order, ordered=True)
     ticket_counts = ticket_counts.sort_values('created_at')
-    st.line_chart(ticket_counts, x='created_at', y='Ticket Count', x_label='Month', y_label="Number of Tickets")
+    st.line_chart(ticket_counts, x='created_at', y='Ticket Count', x_label='Month', y_label="Number of Tickets", color="#3A7CA5")
 
     # IT tickets table
     dataframe = it_data
@@ -1112,7 +1129,8 @@ def account_settings():
 
     with st.container(border=True):
         if "profile_picture" not in st.session_state:
-            st.session_state["profile_picture"] = None
+            st.session_state["profile_picture"] = default_profile()
+            st.session_state["custom_profile"] = False
         col1, col2 = st.columns([1, 4], vertical_alignment="center")
         with col2:
             st.markdown("### Profile Picture")
@@ -1127,13 +1145,16 @@ def account_settings():
 
             if uploaded_file is not None:
                 st.session_state["profile_picture"] = Image.open(uploaded_file).resize((125, 125))
+                st.session_state["custom_profile"] = True
 
-            if st.session_state["profile_picture"] is not None:
-                with col1:
-                    st.image(st.session_state["profile_picture"])
+        with col1:
+            st.image(st.session_state["profile_picture"])
+
+            if st.session_state.get("custom_profile", False):
                 with col2:
                     if st.button("Remove"):
-                        st.session_state["profile_picture"] = None
+                        st.session_state["profile_picture"] = default_profile()
+                        st.session_state["custom_profile"] = False
                         if "profile_uploader" in st.session_state:
                             del st.session_state["profile_uploader"]
                         st.rerun()
@@ -1180,6 +1201,36 @@ def account_settings():
                         else:
                             st.error("Current password is incorrect.")
 
+    # Logs out a user and redirects them to the home page
+    st.divider()
+    if st.button("Log out"):
+        st.session_state.logged_in = False
+        st.session_state.username = ""
+        st.info("You have been logged out.")
+        st.switch_page(st.session_state.home)
+
+
+def default_profile():
+    img = Image.new("RGB", size=(150, 150), color=(0, 0, 0))
+
+    draw = ImageDraw.Draw(img)
+    draw.ellipse(
+        xy=(35, 35, 100, 100),
+        fill=(255, 255, 255),
+        outline=(0, 0, 0),
+        width=5
+    )
+
+    draw.ellipse(
+        xy=(20, 110, 120, 185),
+        fill=(255, 255, 255),
+        outline=(0, 0, 0),
+        width=5
+    )
+
+    img.format = "PNG"
+    return img
+
 
 
 # ---------- Configure Pages for navigation ----------
@@ -1201,6 +1252,9 @@ st.session_state.register = register
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
+if 'role' not in st.session_state:
+    st.session_state.role = None
+
 # ---------- Page Navigation ----------
 
 pages = [home, login, register, cyber, datasets, it_dashboard, admin, account]
@@ -1209,6 +1263,16 @@ if st.session_state.logged_in:
     pages = [cyber, datasets, it_dashboard, admin, account]
 
     with st.sidebar:
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            if st.session_state.get("profile_picture") is not None:
+                st.image(st.session_state["profile_picture"], width=100)
+            else:
+                st.image(default_profile(), width=100)
+        with col2:
+            st.markdown(f"**{st.session_state.username}**")
+            st.caption(f"{st.session_state.role}")
+        st.divider()
         if st.button("Log out"):
             for key in ['logged_in', 'username']:
                 del st.session_state[key]
