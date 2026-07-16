@@ -1122,7 +1122,7 @@ def account_settings():
             if uploaded_file is not None:
                 st.session_state["profile_picture"] = Image.open(uploaded_file).resize((125, 125))
 
-            if st.session_state is not None:
+            if st.session_state["profile_picture"] is not None:
                 with col1:
                     st.image(st.session_state["profile_picture"])
                 with col2:
