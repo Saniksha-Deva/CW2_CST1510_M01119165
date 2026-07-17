@@ -360,8 +360,14 @@ def datasets_dashboard():
         st.plotly_chart(upload_chart)
 
     # Horizontal bar chart to compare the sizes of the datsets
+    row_number = st.sidebar.selectbox('Number of rows', ['0 - 5000', '> 5000'])
+    if row_number == '0 - 5000':
+        filtered_size = datasets_data[datasets_data['rows'] <= 5000]
+    else:
+        filtered_size = datasets_data[datasets_data['rows'] > 5000]
     st.subheader("Size of Datasets")
-    st.bar_chart(datasets_data, x='name', y='rows', horizontal=True, sort="rows", color="#3A7CA5")
+    chart_data = filtered_size.set_index('name')[['rows']]
+    st.bar_chart(chart_data, x_label="Name", y_label="Number of rows", color="#3A7CA5")
 
     # Datasets table
     dataframe = datasets_data
