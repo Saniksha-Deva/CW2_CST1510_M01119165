@@ -281,6 +281,16 @@ def cyber_incidents_dashboard():
         status_ = st.selectbox('Status', cyber_data['status'].unique())
     filtered_data = cyber_data[cyber_data['severity'] == severity_]
 
+    resolved_count = (cyber_data['status'] == 'Resolved').sum()
+    resolved_rate = (resolved_count / len(cyber_data) * 100)
+    common_category = cyber_data['category'].value_counts().idxmax()
+
+    metric1, metric2 = st.columns(2)
+    with metric1:
+        st.metric("Resolution Rate", f"{resolved_rate:.2f}%")
+    with metric2:
+        st.metric("Most Common Category", common_category)
+
     severity_colors = {
         "Low": "#6FA989",
         "Medium": "#D4B96A",
@@ -398,6 +408,15 @@ def it_tickets_dashboard():
     it_data = get_all_it_tickets(conn)
 
     st.title(f"Welcome {st.session_state.username} to the IT Tickets Dashboard")
+
+    average_resolution_time = it_data['resolution_time_hours'].mean()
+    open_count = (it_data['status'] == 'Open').sum()
+
+    metric1, metric2 = st.columns(2)
+    with metric1:
+        st.metric("Average Resolution Time", f"{average_resolution_time:.1f} hours")
+    with metric2:
+        st.metric("Current Open Tickets", open_count)
 
     # Allow the user to choose a specific priority to focus on
     with st.sidebar:
