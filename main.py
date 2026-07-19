@@ -1,3 +1,5 @@
+# ------------------ IMPORTS ------------------
+
 import streamlit as st
 from hashing import generate_hash, is_valid_hash
 from app_model.db import get_connection
@@ -62,10 +64,10 @@ def main():
 # Inserting totp_secret column
 totp_column(conn)
 
-
+# Database connection for Streamlit
 conn = get_connection()
 
-# ---------- PAGES ----------
+# ------------------ PAGES ------------------
 
 def home_page():
    """Page that shows what the platform is about and allows a user to login/register"""
@@ -127,9 +129,11 @@ def login_page():
         # Verify the password against the stored hash
         if login_username and is_valid_hash(login_password, user_hash):
 
+            # Setup totp secret for users with a NULL totp
             if totp_secret is None:
                 st.warning("2FA setup required. Scan this QR code, then enter the code and log in again.")
 
+                # Generate the secret code and keep it in session state until it is enabled
                 if "pending_secret" not in st.session_state:
                     st.session_state["pending_secret"] = pyotp.random_base32()
 
@@ -166,7 +170,6 @@ def login_page():
             st.error("Incorrect username or password")
 
 
-
 def register_page():
     """Creates a page for new users to create an account"""
     st.set_page_config(
@@ -185,7 +188,7 @@ def register_page():
         submitted = st.form_submit_button("Register")
 
         if submitted:
-            # Validate imputs
+            # Validate inputs
             if not register_username or not register_password:
                 st.error("All fields are required.")
                 return
@@ -291,6 +294,7 @@ def cyber_incidents_dashboard():
     with metric2:
         st.metric("Most Common Category", common_category)
 
+    # Colours to use for the color coded bar chart
     severity_colors = {
         "Low": "#6FA989",
         "Medium": "#D4B96A",
@@ -329,6 +333,7 @@ def cyber_incidents_dashboard():
     st.subheader(f"Cyber Incidents with Status: {status_}")
     st.bar_chart(filtered_status['category'].value_counts(), color="#3A7CA5")
 
+    # Domain-specific AI chatbot
     ai_analyser(domain="Cybersecurity")
 
 
@@ -384,7 +389,9 @@ def datasets_dashboard():
     filtered_df = dataframe_explorer(dataframe, case=False)
     st.dataframe(filtered_df, width="stretch")
 
+    # Domain-specific AI chatbot
     ai_analyser(domain="Data Science")
+
 
 def it_tickets_dashboard():
     """Displays information about the IT tickets"""
@@ -424,6 +431,7 @@ def it_tickets_dashboard():
         priority_ = st.selectbox('priority', it_data['priority'].unique())
     filtered_data = it_data[it_data['priority'] == priority_]
 
+    # Colours to use for the color coded charts
     priority_colors = {
         "Low": "#6FA989",
         "Medium": "#D4B96A",
@@ -461,11 +469,14 @@ def it_tickets_dashboard():
     filtered_df = dataframe_explorer(dataframe, case=False)
     st.dataframe(filtered_df, width="stretch")
 
+    # Domain-specific AI chatbot
     ai_analyser(domain="IT Operations")
     
+
 # ---------- Admin Dashboard and Features ----------
 
 def manage_users(conn):
+    """Function for admins to search, edit, promote/demote and delete users"""
     
     st.subheader("Registered Users")
     with st.container(border=True):
@@ -530,6 +541,7 @@ def manage_users(conn):
 
 
 def dashboard_overview():
+    """Overview for metrics that can be accessed by the admin"""
     cursor = conn.cursor()
 
     cyber_col, it_col = st.columns(2)
@@ -636,6 +648,7 @@ def dashboard_overview():
 
 
 def admin_dashboard():
+    """Page for admins to view metrics and view and manage users"""
     st.set_page_config(
         page_title="Admin Dashboard",
         layout="wide"
@@ -656,6 +669,7 @@ def admin_dashboard():
 
     user_role = result[0] if result else None
 
+    # Only allow admins to access the page
     if user_role != 'admin':
         st.warning("This page can only be accessed by admins.")
         st.stop()
@@ -673,9 +687,13 @@ def admin_dashboard():
 if "locked_users" not in st.session_state:
     st.session_state.locked_users = {}
 
+# ------------------ LOGIN ATTEMPTS LIMIT FUNCTIONALITY ------------------
+
 def countdown(username, countdown_seconds):
+    """Display time left until the user can log in again"""
     countdown_placeholder = st.empty()
     for i in range(countdown_seconds, 0, -1):
+        # Unlock the user if an admin unlocked the user
         if username not in st.session_state.locked_users:
             st.session_state.login_attempt[username] = 0
             countdown_placeholder.success(f"An admin has unlocked your account. You can log in now.")
@@ -691,14 +709,17 @@ def countdown(username, countdown_seconds):
     #st.session_state.rate_limit_time = 0
     countdown_placeholder.success("You can try logging in now.")
 
+
 def login_limit(username, action, login_success=None):
+    """Limit the login attempts and lock user account once maximum attempts have been reached until timeout expires or unlocked by admin"""
     if 'login_attempt' not in st.session_state:
         st.session_state.login_attempt = {}
 
-    attempts = 3
-    rate_limit = 300
+    attempts = 3 # maximum failed attempts
+    rate_limit = 300 # lockout duration
     current_time = time.time()
 
+    # If the user is currently locke out check how much time is left
     if username in st.session_state.locked_users:
         lockout_end = st.session_state.locked_users[username]
         lockout_time = int(lockout_end - current_time)
@@ -708,6 +729,7 @@ def login_limit(username, action, login_success=None):
                 countdown(username, lockout_time)
                 return False
         else:
+            # Lockout has expired
             del st.session_state.locked_users[username]
             st.session_state.login_attempt[username] = 0
 
@@ -733,7 +755,9 @@ def login_limit(username, action, login_success=None):
             if username in st.session_state.locked_users:
                 del st.session_state.locked_users[username]
 
+
 def unlock_user():
+    """Allow a user to be unlocked before the lockout time expires"""
     st.subheader("Locked Users")
     with st.container():
         if not st.session_state.locked_users:
@@ -753,6 +777,8 @@ def unlock_user():
                         st.session_state.login_attempt[username] = 0
                         st.success(f"Unlocked {username}")
                         st.rerun()
+
+# ------------------ Domain-specific Prompts ------------------
 
 SYSTEM_PROMPTS = {
     "Cybersecurity": """
@@ -965,6 +991,7 @@ Style requirements:
 """
 }
 
+
 def load_domain_data(domain):
     """Load the relevant dataframe for a given domain."""
    
@@ -978,7 +1005,9 @@ def load_domain_data(domain):
         df = None
     return df
 
+
 def ai_analyser(domain, show_header: bool = True, show_controls: bool = True):
+    """Load the domain data into the prompt for the AI chatbot and keep a chat history for the chats"""
     # Auth guard
     if not st.session_state.get("logged_in", False):
         st.switch_page(st.session_state.home); st.stop()
@@ -1064,6 +1093,7 @@ def ai_analyser(domain, show_header: bool = True, show_controls: bool = True):
 
 
 def account_settings():
+    """Settings to upload profile picture, edit username and change password"""
     st.set_page_config(
         page_title="Account Settings",
         page_icon="⚙️",
@@ -1075,6 +1105,7 @@ def account_settings():
 
     with st.container(border=True):
         if "profile_picture" not in st.session_state:
+            # Initialise a default profile picture
             st.session_state["profile_picture"] = default_profile()
             st.session_state["custom_profile"] = False
         col1, col2 = st.columns([1, 4], vertical_alignment="center")
@@ -1157,6 +1188,7 @@ def account_settings():
 
 
 def default_profile():
+    """Create an image to be used as the default profile picture"""
     img = Image.new("RGB", size=(150, 150), color=(0, 0, 0))
 
     draw = ImageDraw.Draw(img)
@@ -1176,7 +1208,6 @@ def default_profile():
 
     img.format = "PNG"
     return img
-
 
 
 # ---------- Configure Pages for navigation ----------
